@@ -23,6 +23,11 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
 
+      # Node 20 고정 (parcel/box2d 빌드 안정성)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       # Runs a single command using the runners shell
       - name: build
         run: |

@@ -53,6 +53,18 @@
     return value.split(/[,\r\n]/g).map(v => v.trim()).filter(v => !!v);
   }
 
+  const PENALTY_STORAGE_KEY = 'mbr_penalty_amount';
+
+  function getPenaltyAmount() {
+    const raw = document.querySelector('#in_penalty').value;
+    const value = parseInt(raw, 10);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  }
+
+  function formatAmount(amount) {
+    return (amount || 0).toLocaleString('ko-KR');
+  }
+
   function parseName(nameStr) {
     const weightRegex = /(\/\d+)/;
     const countRegex = /(\*\d+)/;
@@ -190,7 +202,6 @@
       }
       window.roulette.start();
       document.querySelector('#settings').classList.add('hide');
-      document.querySelector('#donate').classList.add('hide');
     });
 
     document.querySelector('#chkAutoRecording').addEventListener('change', (e) => {
@@ -225,11 +236,15 @@
       setWinnerRank(1);
     });
 
-    window.roulette.addEventListener('goal', () => {
+    window.roulette.addEventListener('goal', (e) => {
       ready = false;
+      const winner = e && e.detail ? e.detail.winner : '';
+      const amount = getPenaltyAmount();
+      if (winner && window.penaltyStats) {
+        window.penaltyStats.addRecord(winner, amount);
+      }
       setTimeout(() => {
         document.querySelector('#settings').classList.remove('hide');
-        document.querySelector('#donate').classList.remove('hide');
       }, 3000);
     });
 
@@ -243,6 +258,63 @@
       collapsible.classList.toggle('collapsed');
       toggleBtn.querySelector('.toggle-arrow').textContent =
         collapsible.classList.contains('collapsed') ? '▲' : '▼';
+    });
+
+    // 벌칙 금액 복원 및 저장
+    const penaltyInput = document.querySelector('#in_penalty');
+    const savedPenalty = localStorage.getItem(PENALTY_STORAGE_KEY);
+    if (savedPenalty !== null) {
+      penaltyInput.value = savedPenalty;
+    }
+    penaltyInput.addEventListener('input', () => {
+      localStorage.setItem(PENALTY_STORAGE_KEY, String(getPenaltyAmount()));
+    });
+
+    // 통계 모달
+    const statsModal = document.querySelector('#stats');
+
+    function renderStats() {
+      const summary = window.penaltyStats ? window.penaltyStats.getSummary() : [];
+      const records = window.penaltyStats ? window.penaltyStats.getRecords() : [];
+
+      const summaryBody = document.querySelector('#statsSummary tbody');
+      summaryBody.innerHTML = summary
+        .map(row => `<tr><td>${escapeHtml(row.name)}</td><td>${row.count}</td><td>${formatAmount(row.total)}</td></tr>`)
+        .join('');
+
+      const historyBody = document.querySelector('#statsHistory tbody');
+      historyBody.innerHTML = records
+        .map(r => {
+          const d = new Date(r.date);
+          const dateStr = isNaN(d.getTime()) ? r.date : d.toLocaleString('ko-KR');
+          return `<tr><td>${escapeHtml(dateStr)}</td><td>${escapeHtml(r.name)}</td><td>${formatAmount(r.amount)}</td></tr>`;
+        })
+        .join('');
+
+      const isEmpty = records.length === 0;
+      document.querySelector('#statsEmpty').style.display = isEmpty ? 'block' : 'none';
+      document.querySelector('#statsSummary').style.display = isEmpty ? 'none' : '';
+      document.querySelector('#statsHistory').style.display = isEmpty ? 'none' : '';
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    document.querySelector('#btnStats').addEventListener('click', () => {
+      renderStats();
+      statsModal.style.display = 'flex';
+    });
+    document.querySelector('#closeStats').addEventListener('click', () => {
+      statsModal.style.display = 'none';
+    });
+    document.querySelector('#clearStats').addEventListener('click', () => {
+      if (confirm('모든 벌칙 기록을 삭제할까요?')) {
+        window.penaltyStats && window.penaltyStats.clear();
+        renderStats();
+      }
     });
 
     document.querySelector('#btnShuffle').click();
@@ -375,9 +447,20 @@
   <div class="left">
     <h3 data-trans>Enter names below</h3>
     <textarea id="in_names" placeholder="Input names separated by commas or line feed here" data-trans="placeholder">수박*2,키위*2,귤*2</textarea>
+    <div class="penalty-row">
+      <label for="in_penalty">
+        <i class="icon trophy"></i>
+        <span data-trans>Penalty amount</span>
+      </label>
+      <input type="number" id="in_penalty" min="0" step="1000" placeholder="0" />
+      <span class="penalty-unit" data-trans>KRW</span>
+    </div>
     <div class="actions">
       <button id="btnNotice">
         <i class="icon megaphone"></i>
+      </button>
+      <button id="btnStats" title="Statistics">
+        <span data-trans>Stats</span>
       </button>
       <a href='https://marblerouletteshop.com' target='_blank' id="btnShop" class='btn new' title='MarbleRoulette Shop'>
         <img src='assets/images/marblerouletteshop.png' />
@@ -408,6 +491,38 @@
   </div>
   <div class="notice-action">
     <button id="closeNotice" data-trans>Close</button>
+  </div>
+</div>
+<div id="stats">
+  <h1 data-trans>Penalty Statistics</h1>
+  <div class="stats-body">
+    <h2 data-trans>By name</h2>
+    <table id="statsSummary">
+      <thead>
+        <tr>
+          <th data-trans>Name</th>
+          <th data-trans>Wins</th>
+          <th data-trans>Total amount</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <h2 data-trans>History</h2>
+    <table id="statsHistory">
+      <thead>
+        <tr>
+          <th data-trans>Date</th>
+          <th data-trans>Name</th>
+          <th data-trans>Amount</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p id="statsEmpty" data-trans>No records yet.</p>
+  </div>
+  <div class="stats-action">
+    <button id="clearStats" data-trans>Reset records</button>
+    <button id="closeStats" data-trans>Close</button>
   </div>
 </div>
 <div class="copyright">&copy; 2022-2026.<a href="https://lazygyu.net" target="_blank">lazygyu</a> <span data-trans>This program is freeware and may be used freely anywhere, including in broadcasts and videos.</span>

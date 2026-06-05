@@ -1,11 +1,10 @@
 import './localization';
 import options from './options';
-import { registerServiceWorker } from './registerServiceWorker';
+import penaltyStats from './penaltyStats';
 import { Roulette } from './roulette';
-
-registerServiceWorker();
 
 const roulette = new Roulette();
 
 (window as any).roulette = roulette;
 (window as any).options = options;
+(window as any).penaltyStats = penaltyStats;
