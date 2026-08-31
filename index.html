@@ -273,6 +273,9 @@
     // 통계 모달
     const statsModal = document.querySelector('#stats');
 
+    // 인라인 편집 중인 기록의 원본 인덱스. 편집 중이 아니면 null.
+    let editingIndex = null;
+
     function renderStats() {
       const summary = window.penaltyStats ? window.penaltyStats.getSummary() : [];
       const records = window.penaltyStats ? window.penaltyStats.getRecords() : [];
@@ -287,9 +290,21 @@
         .map(r => {
           const d = new Date(r.date);
           const dateStr = isNaN(d.getTime()) ? r.date : d.toLocaleString('ko-KR');
-          return `<tr><td>${escapeHtml(dateStr)}</td><td>${escapeHtml(r.name)}</td><td>${formatAmount(r.amount)}</td></tr>`;
+          const cells = r.index === editingIndex
+            ? `<td><input type="text" class="edit-name" value="${escapeHtml(r.name)}" /></td>`
+              + `<td><input type="number" class="edit-amount" min="0" step="1000" value="${r.amount}" /></td>`
+              + `<td><button type="button" data-action="save" data-trans>Save</button>`
+              + ` <button type="button" data-action="cancel" data-trans>Cancel</button></td>`
+            : `<td>${escapeHtml(r.name)}</td>`
+              + `<td>${formatAmount(r.amount)}</td>`
+              + `<td><button type="button" data-action="edit" data-trans>Edit</button>`
+              + ` <button type="button" data-action="delete" data-trans>Delete</button></td>`;
+          return `<tr data-index="${r.index}"><td>${escapeHtml(dateStr)}</td>${cells}</tr>`;
         })
         .join('');
+      historyBody.querySelectorAll('[data-trans]').forEach(el => {
+        window.translateElement && window.translateElement(el);
+      });
 
       const isEmpty = records.length === 0;
       document.querySelector('#statsEmpty').style.display = isEmpty ? 'block' : 'none';
@@ -304,15 +319,108 @@
     }
 
     document.querySelector('#btnStats').addEventListener('click', () => {
+      editingIndex = null;
       renderStats();
       statsModal.style.display = 'flex';
     });
     document.querySelector('#closeStats').addEventListener('click', () => {
+      editingIndex = null;
       statsModal.style.display = 'none';
     });
     document.querySelector('#clearStats').addEventListener('click', () => {
       if (confirm('모든 벌칙 기록을 삭제할까요?')) {
         window.penaltyStats && window.penaltyStats.clear();
+        editingIndex = null;
+        renderStats();
+      }
+    });
+
+    // 개별 기록 수정/삭제. renderStats() 가 행을 매번 다시 그리므로 tbody 에 위임한다.
+    const historyBodyEl = document.querySelector('#statsHistory tbody');
+
+    function saveEditingRow(row, index) {
+      const nameInput = row.querySelector('.edit-name');
+      const amountInput = row.querySelector('.edit-amount');
+      if (!nameInput || !amountInput) return;
+
+      const name = nameInput.value.trim();
+      if (!name) {
+        simpleToast('Please enter a name.');
+        nameInput.focus();
+        return;
+      }
+
+      const amount = Number(amountInput.value);
+      if (!Number.isFinite(amount) || amount < 0) {
+        simpleToast('Please enter an amount of 0 or more.');
+        amountInput.focus();
+        return;
+      }
+
+      if (!window.penaltyStats || !window.penaltyStats.updateRecord(index, { name, amount })) {
+        simpleToast('Failed to update the record.');
+        return;
+      }
+
+      editingIndex = null;
+      renderStats();
+    }
+
+    historyBodyEl.addEventListener('click', (e) => {
+      const button = e.target.closest('button[data-action]');
+      if (!button) return;
+
+      const row = button.closest('tr[data-index]');
+      if (!row) return;
+
+      const index = Number(row.getAttribute('data-index'));
+      const action = button.getAttribute('data-action');
+
+      if (action === 'edit') {
+        editingIndex = index;
+        renderStats();
+        const nameInput = historyBodyEl.querySelector('.edit-name');
+        if (nameInput) {
+          nameInput.focus();
+          nameInput.select();
+        }
+        return;
+      }
+
+      if (action === 'cancel') {
+        editingIndex = null;
+        renderStats();
+        return;
+      }
+
+      if (action === 'save') {
+        saveEditingRow(row, index);
+        return;
+      }
+
+      if (action === 'delete') {
+        if (!confirm('이 기록을 삭제할까요?')) return;
+        if (!window.penaltyStats || !window.penaltyStats.deleteRecord(index)) {
+          simpleToast('Failed to delete the record.');
+          return;
+        }
+        // 삭제하면 뒤 항목의 인덱스가 밀리므로 편집 상태를 버리고 다시 그린다.
+        editingIndex = null;
+        renderStats();
+      }
+    });
+
+    historyBodyEl.addEventListener('keydown', (e) => {
+      if (editingIndex === null) return;
+      const row = e.target.closest('tr[data-index]');
+      if (!row) return;
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveEditingRow(row, Number(row.getAttribute('data-index')));
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        editingIndex = null;
         renderStats();
       }
     });
@@ -514,6 +622,7 @@
           <th data-trans>Date</th>
           <th data-trans>Name</th>
           <th data-trans>Amount</th>
+          <th data-trans>Actions</th>
         </tr>
       </thead>
       <tbody></tbody>

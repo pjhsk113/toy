@@ -654,6 +654,25 @@ div.toast {
       &#statsSummary td:nth-child(2), &#statsSummary th:nth-child(2) {
         text-align: right;
       }
+
+      &#statsHistory {
+        table-layout: fixed;
+
+        th:nth-child(1), td:nth-child(1) { width: 34%; }
+        th:nth-child(2), td:nth-child(2) { width: 20%; }
+        th:nth-child(3), td:nth-child(3) { width: 20%; }
+        th:nth-child(4), td:nth-child(4) { width: 26%; white-space: nowrap; }
+
+        td:nth-child(4) button {
+          padding: 2px 6px;
+          font-size: 12px;
+        }
+
+        input.edit-name, input.edit-amount {
+          width: 100%;
+          box-sizing: border-box;
+        }
+      }
     }
 
     #statsEmpty {
